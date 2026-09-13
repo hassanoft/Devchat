@@ -1,12 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:devchat/core/app.dart';
+import 'package:devchat/main.dart';
 
 void main() {
-  testWidgets('shows configuration help when Supabase is missing', (tester) async {
-    await tester.pumpWidget(const DevChatApp(configurationError: true));
-
-    expect(find.text('Supabase n’est pas configuré.'), findsOneWidget);
-    expect(find.text('DevChat'), findsOneWidget);
+  testWidgets('missing Supabase config shows setup message', (tester) async {
+    await tester.pumpWidget(const MissingConfigApp());
+    expect(find.textContaining('Supabase n’est pas configuré'), findsOneWidget);
   });
 }

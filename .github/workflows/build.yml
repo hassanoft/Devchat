@@ -1,16 +1,13 @@
-name: Build DevChat Android
+name: DevChat Android
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,38 +18,26 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate missing Flutter platforms
-        run: |
-          if [ ! -d android ]; then
-            flutter create --platforms=android .
-          fi
+      - name: Create platform folders if missing
+        run: flutter create --platforms=android,ios .
 
-      - name: Flutter doctor
-        run: flutter doctor -v
-
-      - name: Get dependencies
+      - name: Install dependencies
         run: flutter pub get
+
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
 
       - name: Analyze
         run: flutter analyze
 
-      - name: Run tests
+      - name: Test
         run: flutter test
 
       - name: Build release APK
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-        run: |
-          test -n "$SUPABASE_URL"
-          test -n "$SUPABASE_PUBLISHABLE_KEY"
-          flutter build apk --release \
-            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY="$SUPABASE_PUBLISHABLE_KEY"
+        run: flutter build apk --release --dart-define=SUPABASE_URL="${{ secrets.SUPABASE_URL }}" --dart-define=SUPABASE_PUBLISHABLE_KEY="${{ secrets.SUPABASE_PUBLISHABLE_KEY }}"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: devchat-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error

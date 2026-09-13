@@ -1,62 +1,37 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChatService {
-  ChatService(this.client);
-
-  final SupabaseClient client;
+  final SupabaseClient client = Supabase.instance.client;
 
   String get userId => client.auth.currentUser!.id;
 
-  Future<List<Map<String, dynamic>>> searchUsers(String query) async {
-    final result = await client
-        .from('profiles')
-        .select('id, username, bio, skills')
-        .neq('id', userId)
-        .ilike('username', '%${query.trim()}%')
-        .order('username')
-        .limit(50);
-
-    return List<Map<String, dynamic>>.from(result);
+  Stream<List<Map<String, dynamic>>> messages({String? conversationId}) {
+    return client
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .order('created_at')
+        .map((rows) => rows.where((row) => row['deleted_at'] == null && (conversationId == null || row['conversation_id'] == conversationId)).toList());
   }
 
-  Future<List<Map<String, dynamic>>> recentUsers() async {
-    final result = await client
-        .from('profiles')
-        .select('id, username, bio, skills')
-        .neq('id', userId)
-        .order('username')
-        .limit(50);
-
-    return List<Map<String, dynamic>>.from(result);
-  }
-
-  Future<void> sendMessage({
-    required String receiverId,
-    required String content,
-  }) async {
-    final text = content.trim();
-    if (text.isEmpty) return;
-
+  Future<void> sendText(String text, {String? conversationId}) async {
+    if (text.trim().isEmpty) return;
     await client.from('messages').insert({
       'sender_id': userId,
-      'receiver_id': receiverId,
-      'content': text,
+      'conversation_id': conversationId,
+      'content': text.trim(),
+      'message_type': 'text',
     });
   }
 
-  Stream<List<Map<String, dynamic>>> messages(String otherUserId) {
-    final stream = client
-        .from('messages')
-        .stream(primaryKey: ['id'])
-        .order('created_at');
-
-    return stream.map(
-      (rows) => rows.where((row) {
-        final sender = row['sender_id'] as String?;
-        final receiver = row['receiver_id'] as String?;
-        return (sender == userId && receiver == otherUserId) ||
-            (sender == otherUserId && receiver == userId);
-      }).toList(),
-    );
+  Future<void> sendCode({required String code, required String language, String? filename, String? conversationId}) async {
+    if (code.trim().isEmpty) return;
+    await client.from('messages').insert({
+      'sender_id': userId,
+      'conversation_id': conversationId,
+      'content': code,
+      'message_type': 'code',
+      'code_language': language,
+      'code_filename': filename?.trim().isEmpty == true ? null : filename?.trim(),
+    });
   }
 }

@@ -1,158 +1,82 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
 import '../../services/chat_service.dart';
+import '../code/code_block.dart';
 
 class ChatPage extends StatefulWidget {
-  const ChatPage({super.key, required this.user});
-
-  final Map<String, dynamic> user;
-
-  @override
-  State<ChatPage> createState() => _ChatPageState();
+  const ChatPage({super.key, this.conversationId, this.title = 'DevChat'});
+  final String? conversationId;
+  final String title;
+  @override State<ChatPage> createState() => _ChatPageState();
 }
 
 class _ChatPageState extends State<ChatPage> {
-  final _controller = TextEditingController();
-  final _scrollController = ScrollController();
-  late final ChatService _chatService;
+  final service = ChatService();
+  final controller = TextEditingController();
+  String language = 'dart';
+  bool codeMode = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _chatService = ChatService(Supabase.instance.client);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _send() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    _controller.clear();
-    try {
-      await _chatService.sendMessage(
-        receiverId: widget.user['id'] as String,
-        content: text,
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Erreur: $e')),
-        );
-      }
+  Future<void> send() async {
+    final text = controller.text;
+    controller.clear();
+    if (codeMode) {
+      await service.sendCode(code: text, language: language, conversationId: widget.conversationId);
+    } else {
+      await service.sendText(text, conversationId: widget.conversationId);
     }
   }
 
+  @override void dispose() { controller.dispose(); super.dispose(); }
+
   @override
   Widget build(BuildContext context) {
-    final username = (widget.user['username'] as String?) ?? 'Developer';
-
     return Scaffold(
-      appBar: AppBar(
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              child: Text(username.substring(0, 1).toUpperCase()),
-            ),
-            const SizedBox(width: 10),
-            Text(username),
-          ],
-        ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _chatService.messages(widget.user['id'] as String),
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Erreur: ${snapshot.error}'));
-                }
-
-                final messages = snapshot.data ?? [];
-
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('Commence la conversation 👋'),
-                  );
-                }
-
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (_scrollController.hasClients) {
-                    _scrollController.jumpTo(
-                      _scrollController.position.maxScrollExtent,
-                    );
-                  }
-                });
-
-                return ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    final mine =
-                        message['sender_id'] == _chatService.userId;
-                    return Align(
-                      alignment:
-                          mine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        constraints: const BoxConstraints(maxWidth: 320),
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: mine
-                              ? Theme.of(context).colorScheme.primary
-                              : const Color(0xFF1A211D),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(message['content'] as String),
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 5,
-                      textInputAction: TextInputAction.newline,
-                      decoration: const InputDecoration(
-                        hintText: 'Écrire un message...',
-                      ),
-                      onSubmitted: (_) => _send(),
+      appBar: AppBar(title: Text(widget.title)),
+      body: Column(children: [
+        Expanded(
+          child: StreamBuilder<List<Map<String, dynamic>>>(
+            stream: service.messages(conversationId: widget.conversationId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) return Center(child: Text('Erreur: ${snapshot.error}'));
+              final rows = snapshot.data ?? const [];
+              if (rows.isEmpty) return const Center(child: Text('Aucun message. Sois le premier à écrire !'));
+              return ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: rows.length,
+                itemBuilder: (_, i) {
+                  final row = rows[i];
+                  final isMe = row['sender_id'] == service.userId;
+                  final type = row['message_type'] as String? ?? 'text';
+                  return Align(
+                    alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 380),
+                      margin: const EdgeInsets.only(bottom: 10),
+                      child: type == 'code'
+                          ? CodeBlock(code: row['content'] ?? '', language: row['code_language'] ?? 'plaintext', filename: row['code_filename'])
+                          : DecoratedBox(decoration: BoxDecoration(color: isMe ? const Color(0xFFD7F8E8) : Colors.white, borderRadius: BorderRadius.circular(16)), child: Padding(padding: const EdgeInsets.all(13), child: Text(row['content'] ?? ''))),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    onPressed: _send,
-                    icon: const Icon(Icons.send_rounded),
-                  ),
-                ],
-              ),
-            ),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+        SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              IconButton.filledTonal(onPressed: () => setState(() => codeMode = !codeMode), icon: Icon(codeMode ? Icons.chat_bubble_outline : Icons.code)),
+              const SizedBox(width: 8),
+              Expanded(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                if (codeMode) DropdownButtonFormField<String>(initialValue: language, items: const ['dart','javascript','typescript','python','java','cpp','c','html','css','json','sql','bash'].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(), onChanged: (v) => setState(() => language = v ?? 'dart'), decoration: const InputDecoration(labelText: 'Langage', isDense: true, border: OutlineInputBorder())),
+                if (codeMode) const SizedBox(height: 7),
+                TextField(controller: controller, maxLines: codeMode ? 6 : 3, minLines: 1, decoration: InputDecoration(hintText: codeMode ? 'Colle ton code…' : 'Écrire un message…', border: const OutlineInputBorder(), suffixIcon: IconButton(onPressed: send, icon: const Icon(Icons.send)))),
+              ])),
+            ]),
+          ),
+        ),
+      ]),
     );
   }
 }
