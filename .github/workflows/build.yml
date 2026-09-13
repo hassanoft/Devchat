@@ -3,11 +3,14 @@ name: DevChat Android
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -18,8 +21,8 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Create platform folders if missing
-        run: flutter create --platforms=android,ios .
+      - name: Create Android platform if missing
+        run: flutter create --platforms=android .
 
       - name: Install dependencies
         run: flutter pub get
@@ -27,23 +30,41 @@ jobs:
       - name: Generate launcher icons
         run: dart run flutter_launcher_icons
 
-      - name: Analyze
-        run: flutter analyze
-
-         - name: Verify secrets are present
-        run: |
-          echo "URL length: ${#SUPABASE_URL}"
-          echo "KEY length: ${#SUPABASE_ANON_KEY}"
-          echo "URL starts with: ${SUPABASE_URL:0:10}"
+      - name: Verify Supabase secrets
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "❌ SUPABASE_URL est vide"
+            exit 1
+          fi
+
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "❌ SUPABASE_ANON_KEY est vide"
+            exit 1
+          fi
+
+          echo "✅ SUPABASE_URL configurée"
+          echo "URL: ${SUPABASE_URL:0:20}..."
+
+          echo "✅ SUPABASE_ANON_KEY configurée"
+          echo "KEY: ${SUPABASE_ANON_KEY:0:8}..."
+
+      - name: Analyze
+        run: flutter analyze
 
       - name: Test
         run: flutter test
 
       - name: Build release APK
-        run: flutter build apk --release --dart-define=SUPABASE_URL="${{ secrets.SUPABASE_URL }}" --dart-define=SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          flutter build apk --release \
+            --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+            --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
