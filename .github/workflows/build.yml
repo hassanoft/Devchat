@@ -30,6 +30,15 @@ jobs:
       - name: Analyze
         run: flutter analyze
 
+         - name: Verify secrets are present
+        run: |
+          echo "URL length: ${#SUPABASE_URL}"
+          echo "KEY length: ${#SUPABASE_ANON_KEY}"
+          echo "URL starts with: ${SUPABASE_URL:0:10}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
       - name: Test
         run: flutter test
 
